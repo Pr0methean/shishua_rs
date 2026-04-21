@@ -39,22 +39,73 @@ const PHI: [u64; 16] = [
     0xFEC507705E4AE6E5,
 ];
 
-/// The raw ShiShuA implementation. Random values are generated in `[u64; 16]` chunks with [round_unpack](ShiShuAState::round_unpack).
+const fn correct_index(index: usize) -> usize {
+    (u32x8::LEN - 1 - index) ^ 1
+}
+const ROTATE_3: [usize; 8] = [
+    correct_index(3),
+    correct_index(4),
+    correct_index(1),
+    correct_index(2),
+    correct_index(7),
+    correct_index(0),
+    correct_index(5),
+    correct_index(6),
+];
+
+macro_rules! shuffle_u64_as_u32 {
+    ($data:expr, $shuffle:expr) => {{
+        let as_u32: u32x8 = bytemuck::cast($data);
+        let shuffled = simd_swizzle!(as_u32, $shuffle);
+        bytemuck::cast(shuffled)
+    }};
+}
+
+pub trait CounterUpdate: Copy + Clone {
+    fn update(&mut self, counter: &mut u64x4);
+}
+
+#[derive(Copy, Clone, Default)]
+pub struct BasicCounterUpdate;
+
+impl CounterUpdate for BasicCounterUpdate {
+    #[inline(always)]
+    fn update(&mut self, counter: &mut u64x4) {
+        *counter += u64x4::from([1, 3, 5, 7]);
+    }
+}
+
+#[derive(Copy, Clone, Default)]
+pub struct LongPeriodCounterUpdate;
+
+impl CounterUpdate for LongPeriodCounterUpdate {
+    #[inline(always)]
+    fn update(&mut self, counter: &mut u64x4) {
+        *counter += u64x4::from([0, 0, 0, PHI[0]]);
+        *counter = shuffle_u64_as_u32!(*counter, ROTATE_3);
+    }
+}
+
+/// The raw ShiShuA implementation. Random values are generated in `[u64; 16]` chunks with [round_unpack](GenericShiShuAState::round_unpack).
 #[derive(Copy, Clone)]
-pub struct ShiShuAState {
+pub struct GenericShiShuAState<C: CounterUpdate> {
     state: [u64x4; STATE_SIZE],
     output: [u64x4; STATE_SIZE],
     counter: u64x4,
+    counter_update: C,
 }
 
-impl ShiShuAState {
+pub type ShiShuAState = GenericShiShuAState<BasicCounterUpdate>;
+pub type LongPeriodShiShuAState = GenericShiShuAState<LongPeriodCounterUpdate>;
+
+impl<C: CounterUpdate + Default> GenericShiShuAState<C> {
     pub fn new(seed: [u64; STATE_LANES]) -> Self {
         const STEPS: usize = 13;
         const ROUNDS: usize = 1;
 
         let mut buffer = [0u64; STATE_LANES * STATE_SIZE * ROUNDS];
 
-        let mut state = ShiShuAState {
+        let mut state = GenericShiShuAState {
             state: [
                 u64x4::from([
                     PHI[3],
@@ -83,6 +134,7 @@ impl ShiShuAState {
             ],
             output: [u64x4::splat(0); 4],
             counter: u64x4::splat(0),
+            counter_update: Default::default(),
         };
 
         for _ in 0..STEPS {
@@ -95,7 +147,10 @@ impl ShiShuAState {
 
         state
     }
+}
 
+
+impl<C: CounterUpdate> GenericShiShuAState<C> {
     fn generate(&mut self, output_slice: &mut [u64]) {
         assert_eq!(output_slice.len() % (STATE_LANES * STATE_SIZE), 0);
 
@@ -124,10 +179,6 @@ impl ShiShuAState {
 
     #[inline(always)]
     fn round(&mut self) -> [u64x4; STATE_SIZE] {
-        const fn correct_index(index: usize) -> usize {
-            (u32x8::LEN - 1 - index) ^ 1
-        }
-
         // Shuffle values work differently in Rust than in the C source.
         //
         // High and low 32 bits are flipped.
@@ -136,16 +187,7 @@ impl ShiShuAState {
         // I spent quite some time figuring this out.
         const SHUFFLE: [[usize; 8]; 2] = [
             // [4, 3, 2, 1, 0, 7, 6, 5],
-            [
-                correct_index(3),
-                correct_index(4),
-                correct_index(1),
-                correct_index(2),
-                correct_index(7),
-                correct_index(0),
-                correct_index(5),
-                correct_index(6),
-            ],
+            ROTATE_3,
             // [2, 1, 0, 7, 6, 5, 4, 3],
             [
                 correct_index(1),
@@ -159,32 +201,22 @@ impl ShiShuAState {
             ],
         ];
 
-        let increment = u64x4::from([1, 3, 5, 7]);
-
-        let ShiShuAState {
+        let GenericShiShuAState {
             state,
             output,
             counter,
+            counter_update,
         } = self;
 
         // Perform the round
         state[1] += *counter;
         state[3] += *counter;
-        *counter += increment;
+        counter_update.update(counter);
 
         let u0 = state[0] >> 1;
         let u1 = state[1] >> 3;
         let u2 = state[2] >> 1;
         let u3 = state[3] >> 3;
-
-        macro_rules! shuffle_u64_as_u32 {
-            ($data:expr, $shuffle:expr) => {{
-                let as_u32: u32x8 = bytemuck::cast($data);
-                let shuffled = simd_swizzle!(as_u32, $shuffle);
-                bytemuck::cast(shuffled)
-            }};
-        }
-
 
         let t0: u64x4 = shuffle_u64_as_u32!(state[0], SHUFFLE[0]);
         let t1: u64x4 = shuffle_u64_as_u32!(state[1], SHUFFLE[1]);

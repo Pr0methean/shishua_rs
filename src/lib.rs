@@ -12,6 +12,9 @@ mod wide_support;
 #[cfg(all(not(feature = "nightly"), not(feature = "wide")))]
 mod software_simd;
 
-pub use crate::core::ShiShuAState;
+pub use crate::core::{
+    BasicCounterUpdate, CounterUpdate, GenericShiShuAState,
+    LongPeriodCounterUpdate, LongPeriodShiShuAState, ShiShuAState,
+};
 #[cfg(feature = "rand")]
-pub use crate::rand::ShiShuARng;
+pub use crate::rand::{GenericShiShuARng, LongPeriodShiShuARng, ShiShuARng};

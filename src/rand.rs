@@ -1,6 +1,6 @@
 use crate::{
-    core::{STATE_LANES, STATE_SIZE},
-    ShiShuAState,
+    core::{BasicCounterUpdate, CounterUpdate, STATE_LANES, STATE_SIZE},
+    GenericShiShuAState,
 };
 use rand_core::{RngCore, SeedableRng};
 
@@ -10,21 +10,27 @@ const STATE_WRAPPER_BUFFER_SIZE: usize =
 /// A rand compatible wrapper around the raw ShiShuAState.
 ///
 /// An internal buffer is used to split up big chunks of randomness into the requested size.
-pub struct ShiShuARng {
-    state: ShiShuAState,
+pub struct GenericShiShuARng<C: CounterUpdate> {
+    state: GenericShiShuAState<C>,
     buffer: [u8; STATE_WRAPPER_BUFFER_SIZE],
     buffer_index: usize,
 }
 
-impl ShiShuARng {
+pub type ShiShuARng = GenericShiShuARng<BasicCounterUpdate>;
+pub type LongPeriodShiShuARng =
+    GenericShiShuARng<crate::core::LongPeriodCounterUpdate>;
+
+impl<C: CounterUpdate + Default> GenericShiShuARng<C> {
     pub fn new(seed: [u64; STATE_LANES]) -> Self {
-        ShiShuARng {
-            state: ShiShuAState::new(seed),
+        GenericShiShuARng {
+            state: GenericShiShuAState::new(seed),
             buffer: [0; STATE_WRAPPER_BUFFER_SIZE],
             buffer_index: STATE_WRAPPER_BUFFER_SIZE,
         }
     }
+}
 
+impl<C: CounterUpdate> GenericShiShuARng<C> {
     #[inline(always)]
     pub fn get_byte(&mut self) -> u8 {
         if self.buffer_index >= STATE_WRAPPER_BUFFER_SIZE {
@@ -47,7 +53,7 @@ impl ShiShuARng {
     }
 }
 
-impl RngCore for ShiShuARng {
+impl<C: CounterUpdate> RngCore for GenericShiShuARng<C> {
     fn next_u32(&mut self) -> u32 {
         let mut buffer = [0u8; size_of::<u32>()];
         self.fill_bytes(&mut buffer);
@@ -85,7 +91,7 @@ impl RngCore for ShiShuARng {
     }
 }
 
-impl SeedableRng for ShiShuARng {
+impl<C: CounterUpdate + Default> SeedableRng for GenericShiShuARng<C> {
     type Seed = [u8; STATE_LANES * size_of::<u64>()];
 
     fn from_seed(seed: Self::Seed) -> Self {

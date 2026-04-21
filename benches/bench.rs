@@ -2,7 +2,9 @@ use criterion::{
     criterion_group, criterion_main, BenchmarkId, Criterion, Throughput,
 };
 use rand::prelude::*;
-use shishua::ShiShuARng;
+use shishua::{
+    CounterUpdate, GenericShiShuARng, LongPeriodShiShuARng, ShiShuARng,
+};
 
 
 #[cfg(feature = "__intern_c_bindings")]
@@ -14,17 +16,27 @@ extern "C" {
 
 
 pub fn benchmark_shisuha(c: &mut Criterion) {
-    const KB: usize = 1024;
-    const MB: usize = 1024 * 1024;
-
     let seed = [0x1, 0x2, 0x3, 0x4];
 
-    let mut rng = ShiShuARng::new(seed);
-    #[cfg(feature = "__intern_c_bindings")]
-    let native_rng = unsafe { shishua_bindings_init(seed.as_ptr()) };
+    benchmark_shishua_generic(c, "ShiShuARng", ShiShuARng::new(seed), true);
+    benchmark_shishua_generic(
+        c,
+        "LongPeriodShiShuARng",
+        LongPeriodShiShuARng::new(seed),
+        false,
+    );
+}
 
-    let mut group = c.benchmark_group("throughput");
-
+fn benchmark_shishua_generic<T: CounterUpdate>(
+    c: &mut Criterion,
+    name: &'static str,
+    mut rng: GenericShiShuARng<T>,
+    #[cfg_attr(not(feature = "__intern_c_bindings"), allow(unused_variables))]
+    include_native: bool,
+) {
+    let mut group = c.benchmark_group(name);
+    const KB: usize = 1024;
+    const MB: usize = 1024 * 1024;
     for size in [512, KB, MB] {
         assert_eq!(size % 512, 0);
 
@@ -42,17 +54,26 @@ pub fn benchmark_shisuha(c: &mut Criterion) {
         group.bench_function(BenchmarkId::new(SHISHUARS_NAME, size), |b| {
             b.iter(|| rng.fill(buffer.as_mut_slice()))
         });
-
         #[cfg(feature = "__intern_c_bindings")]
-        group.bench_function(BenchmarkId::new("shishua_c", size), |b| {
-            b.iter(|| unsafe {
-                shishua_bindings_generate(native_rng, buffer.as_mut_ptr(), size)
+        if include_native {
+            let native_rng = unsafe { shishua_bindings_init(seed.as_ptr()) };
+
+            group.bench_function(BenchmarkId::new("shishua_c", size), |b| {
+                b.iter(|| unsafe {
+                    shishua_bindings_generate(
+                        native_rng,
+                        buffer.as_mut_ptr(),
+                        size,
+                    )
+                });
             });
-        });
+        }
     }
 
     #[cfg(feature = "__intern_c_bindings")]
-    unsafe {shishua_bindings_destroy(native_rng)};
+    unsafe {
+        shishua_bindings_destroy(native_rng)
+    };
     group.finish();
 }
 

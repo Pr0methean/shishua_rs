@@ -1,7 +1,8 @@
 use crate::{
-    core::{BasicCounterUpdate, CounterUpdate, STATE_LANES, STATE_SIZE},
+    core::{u64x4, BasicCounterUpdate, CounterUpdate, STATE_LANES, STATE_SIZE},
     GenericShiShuAState,
 };
+use core::convert::TryInto;
 use rand_core::{RngCore, SeedableRng};
 
 const STATE_WRAPPER_BUFFER_SIZE: usize =
@@ -27,6 +28,24 @@ impl<C: CounterUpdate + Default> GenericShiShuARng<C> {
             buffer: [0; STATE_WRAPPER_BUFFER_SIZE],
             buffer_index: STATE_WRAPPER_BUFFER_SIZE,
         }
+    }
+
+    pub fn new_with_large_seed(seed: [u64; STATE_LANES * 2]) -> Self {
+        let main_seed: [u64; STATE_LANES] = seed[0..STATE_LANES].try_into().unwrap();
+        let counter_seed: [u64; STATE_LANES] =
+            seed[STATE_LANES..].try_into().unwrap();
+
+        // Ensure that counter uses seed, but that similar seeds don't result in similar positions
+        // in the same cycle.
+        let mut counter_deriver = Self::new(counter_seed);
+        counter_deriver.state.counter = u64x4::from(main_seed);
+        let mut counter_from_base = [0u64; STATE_LANES];
+        counter_deriver
+            .fill_bytes(bytemuck::cast_slice_mut(&mut counter_from_base));
+
+        let mut new = Self::new(main_seed);
+        new.state.counter = u64x4::from(counter_seed);
+        new
     }
 }
 

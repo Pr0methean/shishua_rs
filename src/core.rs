@@ -1,9 +1,9 @@
 #[cfg(all(not(feature = "nightly"), not(feature = "wide")))]
-use crate::software_simd::*;
+pub(crate) use crate::software_simd::*;
 #[cfg(feature = "nightly")]
-use core::simd::{simd_swizzle, u32x8, u64x4};
+pub(crate) use core::simd::{simd_swizzle, u32x8, u64x4};
 #[cfg(all(not(feature = "nightly"), feature = "wide"))]
-use {
+pub(crate) use {
     crate::wide_support::*,
     wide::{u32x8, u64x4},
 };
@@ -91,7 +91,7 @@ impl CounterUpdate for LongPeriodCounterUpdate {
 pub struct GenericShiShuAState<C: CounterUpdate> {
     state: [u64x4; STATE_SIZE],
     output: [u64x4; STATE_SIZE],
-    counter: u64x4,
+    pub(crate) counter: u64x4,
     counter_update: C,
 }
 

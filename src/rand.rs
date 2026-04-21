@@ -110,10 +110,53 @@ impl<C: CounterUpdate> RngCore for GenericShiShuARng<C> {
     }
 }
 
-impl<C: CounterUpdate + Default> SeedableRng for GenericShiShuARng<C> {
+impl SeedableRng for ShiShuARng {
     type Seed = [u8; STATE_LANES * size_of::<u64>()];
 
     fn from_seed(seed: Self::Seed) -> Self {
         Self::new(bytemuck::cast(seed))
+    }
+}
+
+const LONG_PERIOD_SEED_LENGTH: usize = 2 * STATE_LANES * size_of::<u64>();
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct LongPeriodShiShuARngSeed([u8; LONG_PERIOD_SEED_LENGTH]);
+
+impl Default for LongPeriodShiShuARngSeed {
+    fn default() -> Self {
+        Self([0; LONG_PERIOD_SEED_LENGTH])
+    }
+}
+
+impl From<[u8; LONG_PERIOD_SEED_LENGTH]> for LongPeriodShiShuARngSeed {
+    fn from(seed: [u8; LONG_PERIOD_SEED_LENGTH]) -> Self {
+        Self(seed)
+    }
+}
+
+impl From<LongPeriodShiShuARngSeed> for [u8; LONG_PERIOD_SEED_LENGTH] {
+    fn from(seed: LongPeriodShiShuARngSeed) -> Self {
+        seed.0
+    }
+}
+
+impl AsRef<[u8]> for LongPeriodShiShuARngSeed {
+    fn as_ref(&self) -> &[u8] {
+        self.0.as_ref()
+    }
+}
+
+impl AsMut<[u8]> for LongPeriodShiShuARngSeed {
+    fn as_mut(&mut self) -> &mut [u8] {
+        self.0.as_mut()
+    }
+}
+
+impl SeedableRng for LongPeriodShiShuARng {
+    type Seed = LongPeriodShiShuARngSeed;
+
+    fn from_seed(seed: Self::Seed) -> Self {
+        Self::new_with_large_seed(bytemuck::cast(seed.0))
     }
 }

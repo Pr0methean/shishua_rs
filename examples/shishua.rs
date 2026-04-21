@@ -4,10 +4,10 @@ use std::{
 };
 
 use rand::{RngCore, SeedableRng};
-use shishua::ShiShuARng;
+use shishua::LongPeriodShiShuARng;
 
 fn main() {
-    let mut rng = ShiShuARng::from_os_rng();
+    let mut rng = LongPeriodShiShuARng::from_os_rng();
     let mut buf = vec![0; 1 << 17];
     let mut stdout = io::stdout().lock();
     loop {

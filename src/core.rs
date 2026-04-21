@@ -39,6 +39,16 @@ const PHI: [u64; 16] = [
     0xFEC507705E4AE6E5,
 ];
 
+#[inline(always)]
+fn add256(a: u64x4, b: u64x4) -> u64x4 {
+    let (r0, c0) = a[0].overflowing_add(b[0]);
+    let (r1, c1) = a[1].overflowing_add(b[1] + (c0 as u64));
+    let (r2, c2) = a[2].overflowing_add(b[2] + (c1 as u64));
+    let (r3, _)  = a[3].overflowing_add(b[3] + (c2 as u64));
+
+    u64x4::from([r0, r1, r2, r3])
+}
+
 const fn correct_index(index: usize) -> usize {
     (u32x8::LEN - 1 - index) ^ 1
 }
@@ -81,8 +91,7 @@ pub struct LongPeriodCounterUpdate;
 impl CounterUpdate for LongPeriodCounterUpdate {
     #[inline(always)]
     fn update(&mut self, counter: &mut u64x4) {
-        *counter += u64x4::from([0, 0, 0, PHI[0]]);
-        *counter = shuffle_u64_as_u32!(*counter, ROTATE_3);
+        *counter = add256(*counter, u64x4::from([PHI[0], PHI[1], PHI[2], PHI[3]]));
     }
 }
 

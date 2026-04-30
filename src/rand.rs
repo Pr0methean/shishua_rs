@@ -3,7 +3,9 @@ use crate::{
     GenericShiShuAState,
 };
 use core::convert::TryInto;
-use rand_core::{RngCore, SeedableRng};
+use core::convert::Infallible;
+use rand::TryRng;
+use rand_core::{SeedableRng};
 
 const STATE_WRAPPER_BUFFER_SIZE: usize =
     STATE_LANES * STATE_SIZE * size_of::<u64>();
@@ -41,7 +43,7 @@ impl<C: CounterUpdate + Default> GenericShiShuARng<C> {
         counter_deriver.state.counter = u64x4::from(main_seed);
         let mut counter_from_base = [0u64; STATE_LANES];
         counter_deriver
-            .fill_bytes(bytemuck::cast_slice_mut(&mut counter_from_base));
+            .try_fill_bytes(bytemuck::cast_slice_mut(&mut counter_from_base)).unwrap();
 
         let mut new = Self::new(main_seed);
         new.state.counter = u64x4::from(counter_seed);
@@ -72,20 +74,21 @@ impl<C: CounterUpdate> GenericShiShuARng<C> {
     }
 }
 
-impl<C: CounterUpdate> RngCore for GenericShiShuARng<C> {
-    fn next_u32(&mut self) -> u32 {
+impl<C: CounterUpdate> TryRng for GenericShiShuARng<C> {
+    type Error = Infallible;
+    fn try_next_u32(&mut self) -> Result<u32, Infallible> {
         let mut buffer = [0u8; size_of::<u32>()];
-        self.fill_bytes(&mut buffer);
-        u32::from_le_bytes(buffer)
+        self.try_fill_bytes(&mut buffer)?;
+        Ok(u32::from_le_bytes(buffer))
     }
 
-    fn next_u64(&mut self) -> u64 {
+    fn try_next_u64(&mut self) -> Result<u64, Infallible> {
         let mut buffer = [0u8; size_of::<u64>()];
-        self.fill_bytes(&mut buffer);
-        u64::from_le_bytes(buffer)
+        self.try_fill_bytes(&mut buffer)?;
+        Ok(u64::from_le_bytes(buffer))
     }
 
-    fn fill_bytes(&mut self, mut dest: &mut [u8]) {
+    fn try_fill_bytes(&mut self, mut dest: &mut [u8]) -> Result<(), Infallible> {
         while self.buffer_index < STATE_WRAPPER_BUFFER_SIZE && dest.len() > 0 {
             dest[0] = self.buffer[self.buffer_index];
             self.buffer_index += 1;
@@ -107,6 +110,8 @@ impl<C: CounterUpdate> RngCore for GenericShiShuARng<C> {
         for byte in dest.iter_mut() {
             *byte = self.get_byte();
         }
+
+        Ok(())
     }
 }
 

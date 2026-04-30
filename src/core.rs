@@ -41,12 +41,26 @@ const PHI: [u64; 16] = [
 
 #[inline(always)]
 fn add256(a: u64x4, b: u64x4) -> u64x4 {
-    let (r0, c0) = a[0].overflowing_add(b[0]);
-    let (r1, c1) = a[1].overflowing_add(b[1] + (c0 as u64));
-    let (r2, c2) = a[2].overflowing_add(b[2] + (c1 as u64));
-    let (r3, _)  = a[3].overflowing_add(b[3] + (c2 as u64));
+    // Vectorized 256-bit add: two SIMD adds with scalar carry-lookahead between.
+    //
+    // Step 1: parallel wrapping add across all 4 lanes (single SIMD op).
+    let sum = a + b;
 
-    u64x4::from([r0, r1, r2, r3])
+    // Step 2: compute per-lane generate and propagate bits.
+    // All 5 comparisons are independent — maximum ILP.
+    let g0 = sum[0] < a[0]; // lane 0 overflowed
+    let g1 = sum[1] < a[1]; // lane 1 overflowed
+    let g2 = sum[2] < a[2]; // lane 2 overflowed
+    let p1 = sum[1] == u64::MAX; // lane 1 would propagate a carry-in
+    let p2 = sum[2] == u64::MAX; // lane 2 would propagate a carry-in
+
+    // Step 3: carry-lookahead propagation (short boolean chain).
+    let c0 = g0;
+    let c1 = g1 | (p1 & c0);
+    let c2 = g2 | (p2 & c1);
+
+    // Step 4: apply carries with a single SIMD add.
+    sum + u64x4::from([0, c0 as u64, c1 as u64, c2 as u64])
 }
 
 const fn correct_index(index: usize) -> usize {
@@ -217,10 +231,15 @@ impl<C: CounterUpdate> GenericShiShuAState<C> {
             counter_update,
         } = self;
 
-        // Perform the round
-        state[1] += *counter;
-        state[3] += *counter;
+        // Save current counter and start the update immediately.
+        // For LongPeriodCounterUpdate the update is a multi-cycle carry chain;
+        // starting it here maximizes overlap with the independent state[0]/state[2]
+        // work below, hiding the carry-chain latency before the next round.
+        let counter_val = *counter;
         counter_update.update(counter);
+
+        state[1] += counter_val;
+        state[3] += counter_val;
 
         let u0 = state[0] >> 1;
         let u1 = state[1] >> 3;

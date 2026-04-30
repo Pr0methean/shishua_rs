@@ -1,6 +1,6 @@
 use core::hint::black_box;
 use criterion::{
-    criterion_group, criterion_main, BenchmarkId, Criterion, Throughput,
+    criterion_group, criterion_main, BenchmarkId, Criterion, measurement::Measurement, Throughput,
 };
 use rand::prelude::*;
 use shishua::{
@@ -16,7 +16,7 @@ extern "C" {
 }
 
 
-pub fn benchmark_shisuha(c: &mut Criterion) {
+pub fn benchmark_shisuha<M: Measurement>(c: &mut Criterion<M>) {
     let seed = [0x1, 0x2, 0x3, 0x4];
 
     benchmark_shishua_generic(c, "ShiShuARng", ShiShuARng::new(seed), true);
@@ -28,8 +28,8 @@ pub fn benchmark_shisuha(c: &mut Criterion) {
     );
 }
 
-fn benchmark_shishua_generic<T: CounterUpdate>(
-    c: &mut Criterion,
+fn benchmark_shishua_generic<M: Measurement, T: CounterUpdate>(
+    c: &mut Criterion<M>,
     name: &'static str,
     mut rng: GenericShiShuARng<T>,
     #[cfg_attr(not(feature = "__intern_c_bindings"), allow(unused_variables))]
@@ -55,7 +55,7 @@ fn benchmark_shishua_generic<T: CounterUpdate>(
         group.bench_function(BenchmarkId::new(SHISHUARS_NAME, size), |b| {
             b.iter(|| {
                 rng.fill(buffer.as_mut_slice());
-                black_box(buffer);
+                black_box(buffer.as_slice());
             })
         });
         #[cfg(feature = "__intern_c_bindings")]
@@ -69,7 +69,7 @@ fn benchmark_shishua_generic<T: CounterUpdate>(
                         buffer.as_mut_ptr(),
                         size,
                     );
-                    black_box(buffer);
+                    black_box(buffer.as_slice());
                 });
             });
         }
@@ -81,6 +81,12 @@ fn benchmark_shishua_generic<T: CounterUpdate>(
     };
     group.finish();
 }
-
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+criterion_group!(
+    name = benches;
+    config = Criterion::default().with_measurement(criterion_cycles_per_byte::CyclesPerByte);
+    targets = benchmark_shisuha
+);
+#[cfg(not(any(target_arch = "x86", target_arch = "x86_64")))]
 criterion_group!(benches, benchmark_shisuha);
 criterion_main!(benches);

@@ -1,3 +1,4 @@
+use core::hint::black_box;
 use criterion::{
     criterion_group, criterion_main, BenchmarkId, Criterion, Throughput,
 };
@@ -52,7 +53,10 @@ fn benchmark_shishua_generic<T: CounterUpdate>(
         const SHISHUARS_NAME: &str = "shishua_rs_nightly";
 
         group.bench_function(BenchmarkId::new(SHISHUARS_NAME, size), |b| {
-            b.iter(|| rng.fill(buffer.as_mut_slice()))
+            b.iter(|| {
+                rng.fill(buffer.as_mut_slice());
+                black_box(buffer);
+            })
         });
         #[cfg(feature = "__intern_c_bindings")]
         if include_native {
@@ -64,7 +68,8 @@ fn benchmark_shishua_generic<T: CounterUpdate>(
                         native_rng,
                         buffer.as_mut_ptr(),
                         size,
-                    )
+                    );
+                    black_box(buffer);
                 });
             });
         }

@@ -45,14 +45,16 @@ fn add256(a: u64x4, b: u64x4) -> u64x4 {
     //
     // Step 1: parallel wrapping add across all 4 lanes (single SIMD op).
     let sum = a + b;
+    let sum_arr = sum.to_array();
+    let a_arr = a.to_array();
 
     // Step 2: compute per-lane generate and propagate bits.
     // All 5 comparisons are independent — maximum ILP.
-    let g0 = sum[0] < a[0]; // lane 0 overflowed
-    let g1 = sum[1] < a[1]; // lane 1 overflowed
-    let g2 = sum[2] < a[2]; // lane 2 overflowed
-    let p1 = sum[1] == u64::MAX; // lane 1 would propagate a carry-in
-    let p2 = sum[2] == u64::MAX; // lane 2 would propagate a carry-in
+    let g0 = sum_arr[0] < a_arr[0]; // lane 0 overflowed
+    let g1 = sum_arr[1] < a_arr[1]; // lane 1 overflowed
+    let g2 = sum_arr[2] < a_arr[2]; // lane 2 overflowed
+    let p1 = sum_arr[1] == u64::MAX; // lane 1 would propagate a carry-in
+    let p2 = sum_arr[2] == u64::MAX; // lane 2 would propagate a carry-in
 
     // Step 3: carry-lookahead propagation (short boolean chain).
     let c0 = g0;
